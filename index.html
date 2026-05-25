@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>AUNG PREDATOR — Share Your Emotions</title>
+
+<!-- 👾 FAVICON (Website Logo) -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👾</text></svg>">
+
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+    <title>COSMIC ZOOM GALAXY</title>
+    <style>
+        /* CSS RESET & SCENE SETUP */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        #galaxy-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Cinematic Sci-Fi UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+            background: radial-gradient(circle at center, transparent 40%, rgba(0, 0, 15, 0.8) 100%);
+        }
+
+        .hud {
+            position: absolute;
+            color: rgba(0, 238, 255, 0.7);
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .hud-tl { top: 30px; left: 30px; }
+        .hud-br { bottom: 30px; right: 30px; text-align: right; }
+
+        .title {
+            color: #fff;
+            font-size: 24px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(0, 238, 255, 0.8);
+        }
+
+        .instructions {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud hud-tl">
+            <div class="title">Cosmic Zoom Engine</div>
+            <div class="instructions">SCROLL: Zoom Galaxy<br>DRAG: Pan Camera<br>CLICK: Starburst Anomaly</div>
+        </div>
+        <div class="hud hud-br">
+            <div>Sector: 7G-Orion</div>
+            <div id="zoom-readout">Z-Depth: 0.00 AU</div>
+        </div>
+    </div>
+
+    <canvas id="galaxy-canvas"></canvas>
+
+    <script>
+        /**
+         * COSMIC ZOOM GALAXY ENGINE
+         * Custom 3D-to-2D Projection & Particle System
+         */
+        const canvas = document.getElementById('galaxy-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimize by disabling alpha background
+        const zoomReadout = document.getElementById('zoom-readout');
+
+        let width, height, centerX, centerY;
+        
+        // Settings
+        const STAR_COUNT = 8000;
+        const SPIRAL_ARMS = 5;
+        const GALAXY_RADIUS = 3000;
+        const GALAXY_THICKNESS = 400;
+        const FOCAL_LENGTH = 800;
+        
+        // Colors: Neon Blue, Purple, White, Warm Orange/Red
+        const COLORS = ['#ffffff', '#aaddff', '#00eeff', '#cc88ff', '#ffbbaa', '#ff5555'];
+
+        // Entities
+        let stars = [];
+        let bursts = [];
+
+        // Camera / Viewport
+        const camera = {
+            x: 0,
+            y: 0,
+            z: -4000, // Start zoomed out
+            targetX: 0,
+            targetY: 0,
+            targetZ: -4000,
+            rotation: 0
+        };
+
+        // Interaction State
+        const mouse = { x: 0, y: 0, active: false };
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let cameraStart = { x: 0, y: 0 };
+
+        // Resize Handler
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Math Utils
+        const random = (min, max) => Math.random() * (max - min) + min;
+        const lerp = (start, end, amt) => (1 - amt) * start + amt * end;
+
+        // --- PARTICLE GENERATION ---
+
+        class Star {
+            constructor() {
+                // Procedural Spiral Galaxy generation
+                const distance = random(0, GALAXY_RADIUS);
+                // Distribute heavily towards the center
+                const distanceSq = Math.pow(distance / GALAXY_RADIUS, 3) * GALAXY_RADIUS; 
+                
+                const angle = (distanceSq * 0.002) + (Math.PI * 2 / SPIRAL_ARMS) * Math.floor(random(0, SPIRAL_ARMS));
+                
+                // Scatter to create arms and density
+                const scatter = (GALAXY_RADIUS - distanceSq) * 0.05;
+                const xOffset = random(-scatter, scatter);
+                const zOffset = random(-scatter, scatter);
+                const yOffset = random(-GALAXY_THICKNESS, GALAXY_THICKNESS) * (1 - distanceSq/GALAXY_RADIUS); // Thicker at center
+
+                this.baseX = Math.cos(angle) * distanceSq + xOffset;
+                this.baseY = yOffset;
+                this.baseZ = Math.sin(angle) * distanceSq + zOffset;
+
+                this.size = random(0.5, 2.5);
+                
+                // Color based on distance to center (hotter/bluer in middle, cooler/redder at edges)
+                if (distanceSq < GALAXY_RADIUS * 0.2) {
+                    this.color = COLORS[random(0, 3) | 0]; // Blue/White
+                } else if (distanceSq > GALAXY_RADIUS * 0.7) {
+                    this.color = COLORS[random(3, 6) | 0]; // Purple/Red
+                } else {
+                    this.color = COLORS[Math.floor(random(0, COLORS.length))];
+                }
+            }
+        }
+
+        class BurstParticle {
+            constructor(x, y, z) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                const angle1 = random(0, Math.PI * 2);
+                const angle2 = random(0, Math.PI * 2);
+                const speed = random(10, 40);
+                this.vx = Math.cos(angle1) * Math.cos(angle2) * speed;
+                this.vy = Math.sin(angle1) * speed;
+                this.vz = Math.cos(angle1) * Math.sin(angle2) * speed;
+                this.life = 1.0;
+                this.decay = random(0.01, 0.03);
+                this.color = COLORS[Math.floor(random(0, 3))]; // Bright colors
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.z += this.vz;
+                this.life -= this.decay;
+            }
+        }
+
+        // Initialize Galaxy
+        for (let i = 0; i < STAR_COUNT; i++) {
+            stars.push(new Star());
+        }
+
+        // --- INTERACTIONS ---
+
+        window.addEventListener('wheel', (e) => {
+            // Zoom in/out
+            const zoomSpeed = 2;
+            camera.targetZ -= e.deltaY * zoomSpeed;
+            // Constrain zoom
+            if (camera.targetZ < -8000) camera.targetZ = -8000;
+            if (camera.targetZ > 2000) camera.targetZ = 2000;
+        }, { passive: true });
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            
+            // Parallax effect (subtle)
+            if (!isDragging) {
+                const offsetX = (mouse.x - centerX) / centerX;
+                const offsetY = (mouse.y - centerY) / centerY;
+                camera.targetX = offsetX * 500;
+                camera.targetY = offsetY * 500;
+            }
+
+            // Dragging to pan
+            if (isDragging) {
+                const dx = mouse.x - dragStart.x;
+                const dy = mouse.y - dragStart.y;
+                camera.targetX = cameraStart.x - dx * 2;
+                camera.targetY = cameraStart.y - dy * 2;
+            }
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStart.x = e.clientX;
+            dragStart.y = e.clientY;
+            cameraStart.x = camera.targetX;
+            cameraStart.y = camera.targetY;
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        window.addEventListener('click', (e) => {
+            if (Math.abs(e.clientX - dragStart.x) < 5 && Math.abs(e.clientY - dragStart.y) < 5) {
+                // Click anomaly at roughly camera focal point
+                const burstZ = camera.z + FOCAL_LENGTH * 2; 
+                for (let i = 0; i < 50; i++) {
+                    bursts.push(new BurstParticle(camera.x, camera.y, burstZ));
+                }
+            }
+        });
+
+        // --- RENDER LOOP ---
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Motion Blur / Space Trail setup
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Additive blending for glows
+            ctx.globalCompositeOperation = 'lighter';
+
+            // Easing camera movement
+            const prevZ = camera.z;
+            camera.x = lerp(camera.x, camera.targetX, 0.05);
+            camera.y = lerp(camera.y, camera.targetY, 0.05);
+            camera.z = lerp(camera.z, camera.targetZ, 0.05);
+            camera.rotation += 0.001; // Slow constant rotation
+
+            // Calculate "Warp Speed" line stretching based on zoom velocity
+            const zVelocity = camera.z - prevZ;
+            const isWarping = Math.abs(zVelocity) > 5;
+
+            // Pre-calculate rotation sines and cosines
+            const cosR = Math.cos(camera.rotation);
+            const sinR = Math.sin(camera.rotation);
+
+            // Render Stars
+            for (let i = 0; i < stars.length; i++) {
+                const star = stars[i];
+
+                // Rotate galaxy slowly around Y axis
+                const rotX = star.baseX * cosR - star.baseZ * sinR;
+                const rotZ = star.baseZ * cosR + star.baseX * sinR;
+                const rotY = star.baseY;
+
+                // 3D to 2D Projection
+                const dz = rotZ - camera.z;
+                
+                // Don't render if behind camera
+                if (dz < 10) continue;
+
+                const scale = FOCAL_LENGTH / dz;
+                const screenX = centerX + (rotX - camera.x) * scale;
+                const screenY = centerY + (rotY - camera.y) * scale;
+
+                // Culling: check if on screen
+                if (screenX < 0 || screenX > width || screenY < 0 || screenY > height) continue;
+
+                // Calculate size and opacity based on depth
+                const renderSize = star.size * scale * 2;
+                const alpha = Math.min(1, scale * 1.5);
+                
+                ctx.fillStyle = star.color;
+                ctx.globalAlpha = alpha;
+
+                if (isWarping && dz < FOCAL_LENGTH * 3) {
+                    // Warp speed stretch effect
+                    const stretch = zVelocity * scale * 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(screenX, screenY);
+                    
+                    // Predict previous frame position roughly for the stretch line
+                    const prevScale = FOCAL_LENGTH / (dz + zVelocity);
+                    const prevX = centerX + (rotX - camera.x) * prevScale;
+                    const prevY = centerY + (rotY - camera.y) * prevScale;
+                    
+                    ctx.lineTo(prevX, prevY);
+                    ctx.lineWidth = renderSize;
+                    ctx.strokeStyle = star.color;
+                    ctx.stroke();
+                } else {
+                    // Normal star
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, renderSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Render Bursts
+            for (let i = bursts.length - 1; i >= 0; i--) {
+                const b = bursts[i];
+                b.update();
+                
+                const dz = b.z - camera.z;
+                if (dz < 10 || b.life <= 0) {
+                    bursts.splice(i, 1);
+                    continue;
+                }
+
+                const scale = FOCAL_LENGTH / dz;
+                const screenX = centerX + (b.x - camera.x) * scale;
+                const screenY = centerY + (b.y - camera.y) * scale;
+
+                ctx.globalAlpha = b.life;
+                ctx.fillStyle = b.color;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, 3 * scale, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Reset composite operation and alpha
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1.0;
+
+            // Update UI
+            zoomReadout.innerText = `Z-Depth: ${(camera.z / 100).toFixed(2)} AU`;
+        }
+
+        // Start Loop
+        animate();
+    </script>
+</body>
+</html>
